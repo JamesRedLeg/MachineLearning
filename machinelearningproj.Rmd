@@ -1,0 +1,85 @@
+---
+title: "Machine Learning Project"
+author: "James C. Birk"
+date: "May 18, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background- Excerpted from the Coursera Web Site
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+## Setup Your Environment
+You will need several packages to reproduce this machine learning exercise.  It is also necessary to set R's seed in order for the results to be reproducible. 
+```{r thesetup }
+library(caretEnsemble)
+library(caret)
+library(randomForest)
+library(e1071)
+set.seed(110805)
+```
+
+## Get and load data
+Download the exercise data and create the test and training data partitions needed to support your modeling technique.
+```{r loadandpartition}
+trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+training <- read.csv(url(trainUrl), na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url(testUrl), na.strings=c("NA","#DIV/0!",""))
+
+inTrain <- createDataPartition(training$classe, p=0.6, list=FALSE)
+myTraining <- training[inTrain, ]
+myTesting <- training[-inTrain, ]
+dim(myTraining); dim(myTesting)
+```
+## Cleaning Steps
+After examining the data, we see that there are some elements which should be removed in order to simplify our analysis.  Variables with near-zero variance do not aid in classifying, and variables which contain a large amount of "NAs" are not helpful either.  Additionally, variables which are administrative in nature will not help in classifying. Therefore, we will remove them from our partitions and from the final 20 member test set.
+```{r clean}
+nzv <- nearZeroVar(myTraining, saveMetrics=TRUE)#NearZeroVariance
+myTraining <- myTraining[,nzv$nzv==FALSE]
+nzv<- nearZeroVar(myTesting,saveMetrics=TRUE) #NearZeroVariance
+myTesting <- myTesting[,nzv$nzv==FALSE]
+nzv<-nearZeroVar(testing, saveMetrics=TRUE)
+testing<-testing[,nzv$nzv==FALSE]
+#Eliminate NAs
+manyNA <- sapply(myTraining, function(x) mean(is.na(x))) > 0.90
+myTraining <- myTraining[, manyNA==F]
+moreNA<- sapply(myTesting, function(x) mean(is.na(x))) >.90
+mytesting <- myTesting[, manyNA==F]
+evenmoreNA<-sapply(testing, function(x) mean(is.na(x))) > 0.90
+testing<-testing[, evenmoreNA==F]
+#Admin variables that do not help
+myTraining <- myTraining[, -(1:5)]
+myTesting <- myTesting[, -(1:5)]
+testing<- testing[, -(1:5)]
+```
+## Fitting a model with Random Forest
+The data is now ready to evaluate with a classifying technique. The Random Forest method was highlighted during class as both an effective and simple to use tool. We will fit to the training set and then evaluate the model with the test set partition. The random forest will use a three-fold cross validation. 
+```{r model}
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+fit <- train(classe ~ ., data=myTraining, method="rf", trControl=fitControl)
+fit$finalModel
+#Now evaluate the test set
+preds <- predict(fit, newdata=myTesting)
+confusionMatrix(myTesting$classe, preds)
+```
+There was a 99.72% accuracy with both the training and testing partitions.  So, there is only a .28% out of class error with this method.
+
+## Predicting on the real test set
+The final step is to run this prediction model against the 20 member test set in the assignment. 
+```{r test}
+finalprediction<- predict(fit, testing)
+finalprediction
+#Write the files so the answer can be submitted
+pml_write_files = function(x){
+    n = length(x)
+    for(i in 1:n){
+        filename = paste0("problem_id_",i,".txt")
+        write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+    }
+}
+# pml_write_files(finalprediction)
